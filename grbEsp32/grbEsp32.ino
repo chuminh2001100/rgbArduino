@@ -1,11 +1,13 @@
 #include "WiFi.h"
 #include <PubSubClient.h>
+#include <ArduinoJson.h>
 #define REDPIN 3
 #define GREENPIN 4
 #define BLUEPIN 5
 #define COLD_WHITE 18
 #define WARM_WHITE 19
 #define FADESPEED 20     // make this higher to slow down
+#define ID_Device "123666888"
 const char* mqtt_server = "mqttvcloud.innoway.vn";
 const char* mqttUser = "minhhk1";
 const char* mqttPassword = "1oCRlrjlZSRdPLv4hPbDi5Wt6namWBuY";
@@ -132,15 +134,18 @@ void callback(char* topic, byte* message, unsigned int length) {
       control_white = 1;
       Serial.println("on white");
       analogWrite(WARM_WHITE, 256);
+      send_message_mqtt("white","on");
     }
     else if(messageTemp.indexOf("off") != -1){
       control_white = 1;
       Serial.println("off while");
       analogWrite(WARM_WHITE, 0);
+      send_message_mqtt("white","off");
     }
     else if(messageTemp.indexOf("blink") != -1){
       control_white = 0;
       Serial.println("blink white");
+      send_message_mqtt("white","blink");
     }
   }
   else if(String(topic) == "message/control/rgb"){
@@ -148,18 +153,22 @@ void callback(char* topic, byte* message, unsigned int length) {
       if (messageTemp.indexOf("on") != -1){
         control_rgb = 0;
         Serial.println("on rgb");
+        send_message_mqtt("rgb","on");
       }
       else if(messageTemp.indexOf("off") != -1){
         control_rgb = 1;
         Serial.println("off rgb");
+        send_message_mqtt("rgb","off");
         control_rgb_2(0,0,0);
       }
       else if(messageTemp.indexOf("auto") != -1){
         control_rgb = 0;
+        send_message_mqtt("rgb","on");
         Serial.println("auto rgb");
       }
       else if(messageTemp.indexOf("manual") != -1){
         control_rgb = 1;
+        send_message_mqtt("rgb","on");
         Serial.println("manual rgb");
         hanldeRGB(messageTemp);
       }
@@ -207,6 +216,16 @@ void setup() {
   xTaskCreate(taskBlinkRGB, "BlinkRGB", 1000, NULL, 1, NULL);
 } 
 
+void send_message_mqtt(String type, String status){
+    StaticJsonDocument<100> jsonDocument;
+    jsonDocument["id"] = ID_Device;
+    jsonDocument["status"] = status;
+    jsonDocument["type"] = type;
+    char buffer[100];
+    serializeJson(jsonDocument, buffer);
+    client.publish("message/status/rgb", buffer);
+}
+
 
 void reconnect() {
   // Loop until we're reconnected
@@ -218,6 +237,9 @@ void reconnect() {
       Serial.println("connected to broker");
       client.subscribe("message/control/white");
       client.subscribe("message/control/rgb");
+      client.subscribe("message/response/rgb");
+      send_message_mqtt("white","on");
+      send_message_mqtt("rgb","on");
     } else {
       control_white = 1;
       if(control_rgb == 0){
